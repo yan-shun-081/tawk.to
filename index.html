@@ -1,28 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tawk.to Chat Embed</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1-on-1 PeerJS Chat & File Share</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
+  input, button { padding:8px; margin:5px; }
+  #chat { border:1px solid #555; padding:10px; height:300px; overflow-y:auto; background:#1e293b; }
+</style>
 </head>
 <body>
 
-  <h2>Embedded Tawk.to Chat Widget</h2>
+<h2>1-on-1 Chat & File Sharing</h2>
 
-  <!-- Start of Tawk.to Script -->
-  <script type="text/javascript">
-  var Tawk_API = Tawk_API || {}, Tawk_LoadStart = new Date();
-  (function() {
-      var s1 = document.createElement("script"),
-      s0 = document.getElementsByTagName("script")[0];
-      s1.async = true;
-      s1.src = 'https://embed.tawk.to/69171a2519c4de195cbe3349/1ja13s9ee';
-      s1.charset = 'UTF-8';
-      s1.setAttribute('crossorigin', '*');
-      s0.parentNode.insertBefore(s1, s0);
-  })();
-  </script>
-  <!-- End of Tawk.to Script -->
+<p id="myId"></p>
 
+<label>Connect to Peer ID:</label>
+<input id="peerIdInput" placeholder="Enter peer ID">
+<button onclick="connectPeer()">Connect</button>
+
+<div id="chat"></div>
+
+<input id="messageInput" placeholder="Type a message">
+<button onclick="sendMessage()">Send</button>
+
+<br>
+<input type="file" id="fileInput">
+<button onclick="sendFile()">Send File</button>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script>
+/********** 1️⃣ Generate Permanent User ID **********/
+let userId = localStorage.getItem('peerId');
+if(!userId){
+    userId = 'user_' + Math.random().toString(36).substring(2,10);
+    localStorage.setItem('peerId', userId);
+}
+document.getElementById('myId').textContent = "Your ID: " + userId;
+
+/********** 2️⃣ Initialize PeerJS with STUN/TURN **********/
+const peer = new Peer(userId, {
+    host: '0.peerjs.com',  // default public host
+    port: 443,
+    path: '/',
+    secure: true,
+    debug: 2,
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'turn:numb.viagenie.ca', username: 'demo@demo.com', credential: 'muazkh' }
+        ]
+    }
+});
+
+peer.on('open', id => {
+    console.log('PeerJS ready. My ID:', id);
+    appendChat("System: Ready. Your Peer ID is " + id);
+});
+
+/********** 3️⃣ Handle Incoming Connections **********/
+let conn;
+peer.on('connection', connection => {
+    conn = connection;
+    setupConnection();
+});
+
+/********** Functions **********/
+function connectPeer(){
+    const otherId = document.getElementById('peerIdInput').value.trim();
+    if(!otherId) return alert("Enter a valid Peer ID");
+    conn = peer.connect(otherId);
+    setupConnection();
+}
+
+function setupConnection(){
+    conn.on('open', () => {
+        console.log('Connected to', conn.peer);
+        appendChat("System: Connected to " + conn.peer);
+    });
+
+    conn.on('data', data => {
+        if(data.type === 'text'){
+            appendChat(`<b>${conn.peer}:</b> ${data.text}`);
+        } else if(data.type === 'file'){
+            const blob = new Blob([data.file]);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = data.name;
+            a.textContent = `Download ${data.name}`;
+            const chatDiv = document.getElementById('chat');
+            const p = document.createElement('p');
+            p.appendChild(a);
+            chatDiv.appendChild(p);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+    });
+
+    conn.on('close', () => {
+        appendChat("System: Connection closed");
+    });
+
+    conn.on('error', err => {
+        console.error(err);
+        appendChat("System: Connection error");
+    });
+}
+
+function sendMessage(){
+    const msgInput = document.getElementById('messageInput');
+    const msg = msgInput.value.trim();
+    if(!msg || !conn || !conn.open) return;
+    conn.send({type:'text', text: msg});
+    appendChat(`<b>You:</b> ${msg}`);
+    msgInput.value = '';
+}
+
+function sendFile(){
+    const fileInput = document.getElementById('fileInput');
+    const file = fileInput.files[0];
+    if(!file || !conn || !conn.open) return alert("Select a file and connect first");
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        conn.send({type:'file', file:reader.result, name:file.name});
+        appendChat(`<b>You sent file:</b> ${file.name}`);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function appendChat(message){
+    const chatDiv = document.getElementById('chat');
+    const p = document.createElement('p');
+    p.innerHTML = message;
+    chatDiv.appendChild(p);
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+}
+</script>
 </body>
 </html>
